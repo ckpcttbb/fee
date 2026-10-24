@@ -121,7 +121,9 @@
       if (input.value.trim() && !list.length) $('pickErr').textContent = '名單中找不到這個名字，請聯絡聲部長。';
       return;
     }
-    ul.innerHTML = list.slice(0, 30).map(n => '<li data-name="' + esc(n) + '">' + esc(n) + '</li>').join('');
+    const sec = (BOOT.sections || {});
+    ul.innerHTML = list.slice(0, 30).map(n => '<li data-name="' + esc(n) + '">' + esc(n) +
+      (sec[n] ? '<span class="hint">（' + esc(sec[n]) + '）</span>' : '') + '</li>').join('');
     ul.classList.remove('hidden');
   }
 
@@ -196,6 +198,14 @@
 
     let html = '<div class="row" style="margin-bottom:8px"><div><b>' + esc(info.name) + '</b> 你好</div>' +
       '<button class="link" onclick="switchPerson()">不是你？</button></div>';
+
+    if (info.preparing) {
+      html += '<div class="card"><h2>' + esc(info.period) + '</h2>' +
+        '<div class="banner b-info">本期收費準備中，聲部長確認名單和金額後就會開放。請等群組通知後再回來繳費。</div></div>';
+      v.innerHTML = html;
+      show('view');
+      return;
+    }
 
     if (!info.open) {
       html += '<div class="card"><h2>目前沒有收款項目</h2>';
