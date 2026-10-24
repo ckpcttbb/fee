@@ -90,6 +90,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current = null;
   let shotData = null;
+  let shotUpload = null; // 背景上傳截圖的 Promise，完成後得到雲端硬碟連結
   let formDirty = false; // 團員已經開始填表，背景更新就不要重畫畫面
 
   // ===== 選名字 =====
@@ -184,6 +185,7 @@
   function render(info) {
     current = info;
     formDirty = false;
+    shotUpload = null;
     shotData = null;
     const v = $('view');
     if (!info.found) {
@@ -277,6 +279,7 @@
       '<label for="amount">轉帳金額</label><input id="amount" inputmode="numeric" value="' + info.total + '" required>' +
       '<label for="shot">轉帳截圖（選填）</label><input id="shot" type="file" accept="image/*">' +
       '<img id="preview" class="preview hidden" alt="">' +
+      '<div id="shotStatus" class="hint"></div>' +
       '<label for="note">備註（選填）</label><textarea id="note" maxlength="500"></textarea>' +
       '<button class="primary" id="submitBtn" type="submit">送出回報</button>' +
       '<div id="formErr" class="err"></div>' +
@@ -323,16 +326,26 @@
     $('reportForm').addEventListener('input', () => { formDirty = true; });
   }
 
+  // 選好截圖就在背景上傳，團員填其他欄位時就傳完了，按送出時不必再等
   function onPickShot(e) {
     shotData = null;
+    shotUpload = null;
     const file = e.target.files[0];
     const img = $('preview');
+    const status = $('shotStatus');
     img.classList.add('hidden');
+    status.textContent = '';
     if (!file) return;
     compress(file).then(data => {
       shotData = data;
       img.src = 'data:' + data.mimeType + ';base64,' + data.data;
       img.classList.remove('hidden');
+      status.textContent = '截圖上傳中…';
+      const upload = api('upload', { name: current.name, file: data }).then(r => r.url);
+      shotUpload = upload;
+      upload.then(
+        () => { if (shotUpload === upload) status.textContent = '✅ 截圖已上傳'; },
+        () => { if (shotUpload === upload) status.textContent = '截圖會在送出時一起上傳'; });
     }).catch(() => { $('formErr').textContent = '這張圖片無法讀取，請換一張或改用截圖。'; e.target.value = ''; });
   }
 
@@ -382,15 +395,20 @@
 
     const btn = $('submitBtn');
     btn.disabled = true;
-    btn.textContent = '送出中…';
-    api('submit', {
+    btn.textContent = shotUpload ? '截圖上傳中…' : '送出中…';
+    const form = {
       name: current.name,
       paidAt: $('paidAt').value,
       last5: last5,
       amount: Number(amount),
       note: $('note').value,
-      file: shotData,
-    })
+    };
+    // 截圖已在背景傳好就只送連結；背景上傳失敗的話，改成和資料一起送
+    const withShot = shotUpload
+      ? shotUpload.then(url => Object.assign(form, { shotUrl: url }), () => Object.assign(form, { file: shotData }))
+      : Promise.resolve(Object.assign(form, shotData ? { file: shotData } : {}));
+    withShot
+      .then(data => { btn.textContent = '送出中…'; return api('submit', data); })
       .then(info => {
         BOOT.infos[info.name] = info;
         remember(info.name, info);
