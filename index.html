@@ -217,11 +217,15 @@
     const code = info.status.code;
     const needsPay = info.total > 0 && ['none', 'issue', 'reported', 'leader'].includes(code);
     if (needsPay) {
+      // 已回報的人預設收起轉帳資訊和表單，免得誤以為還沒繳又轉一次；
+      // 先送出、還沒轉帳的人可以自己展開
       const reportOpen = code === 'none' || code === 'issue';
-      html += payCard(info);
       if (!reportOpen) {
-        html += '<div style="text-align:center;margin-bottom:14px"><button class="link" onclick="openReport()">資料填錯了？重新回報</button></div>';
+        html += '<div style="text-align:center;margin-bottom:14px">' +
+          '<button class="link" onclick="openCard(\'payCard\')">還沒轉帳？顯示轉帳資訊</button>　｜　' +
+          '<button class="link" onclick="openCard(\'reportCard\')">資料填錯了？重新回報</button></div>';
       }
+      html += payCard(info, reportOpen);
       html += reportCard(info, reportOpen);
     }
 
@@ -233,9 +237,9 @@
     }
   }
 
-  function payCard(info) {
+  function payCard(info, open) {
     const b = info.bank;
-    return '<div class="card"><h2>轉帳資訊</h2>' +
+    return '<div class="card' + (open ? '' : ' hidden') + '" id="payCard"><h2>轉帳資訊</h2>' +
       '<div class="row"><span class="k">銀行</span><span class="v">' + esc(b.name) + '（' + esc(b.code) + '）</span>' +
         '<button class="copy" onclick="copyText(\'' + esc(b.code) + '\', this)">複製</button></div>' +
       '<div class="row"><span class="k">帳號</span><span class="v">' + esc(b.account) + '</span>' +
@@ -263,9 +267,9 @@
       '</form></div>';
   }
 
-  function openReport() {
-    $('reportCard').classList.remove('hidden');
-    $('reportCard').scrollIntoView({ behavior: 'smooth' });
+  function openCard(id) {
+    $(id).classList.remove('hidden');
+    $(id).scrollIntoView({ behavior: 'smooth' });
   }
 
   function drawQr(text) {
