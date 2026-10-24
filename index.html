@@ -90,6 +90,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current = null;
   let shotData = null;
+  let formDirty = false; // 團員已經開始填表，背景更新就不要重畫畫面
 
   // ===== 選名字 =====
   const input = $('nameInput');
@@ -135,11 +136,25 @@
     load(name);
   }
 
+  // 全部團員的資料在頁面打開時就載入了，選名字後直接顯示；還沒載完就等它
   function load(name) {
-    show('loading');
-    api('info', { name: name })
-      .then(render)
+    if (!fresh) show('loading');
+    bootReady
+      .then(() => {
+        const info = BOOT.infos[name] || { found: false, name: name };
+        remember(name, info);
+        render(info);
+      })
       .catch(err => { show('pick'); $('pickErr').textContent = err.message || String(err); });
+  }
+
+  // 手機上只記住名單和自己的資料（不存別人的），下次打開可以先秒開
+  function remember(name, info) {
+    try {
+      const own = {};
+      if (info && info.found) own[name] = info;
+      localStorage.setItem('boot', JSON.stringify(Object.assign({}, BOOT, { infos: own })));
+    } catch (e) {}
   }
 
   function show(which) {
@@ -168,6 +183,7 @@
 
   function render(info) {
     current = info;
+    formDirty = false;
     shotData = null;
     const v = $('view');
     if (!info.found) {
@@ -304,6 +320,7 @@
     $('amount').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, ''); });
     $('shot').addEventListener('change', onPickShot);
     $('reportForm').addEventListener('submit', onSubmit);
+    $('reportForm').addEventListener('input', () => { formDirty = true; });
   }
 
   function onPickShot(e) {
@@ -374,7 +391,12 @@
       note: $('note').value,
       file: shotData,
     })
-      .then(info => { render(info); window.scrollTo(0, 0); })
+      .then(info => {
+        BOOT.infos[info.name] = info;
+        remember(info.name, info);
+        render(info);
+        window.scrollTo(0, 0);
+      })
       .catch(ex => { btn.disabled = false; btn.textContent = '送出回報'; err.textContent = ex.message || String(ex); });
   }
 
@@ -385,33 +407,43 @@
     input.placeholder = '輸入名字…';
   }
 
-  // 上次的名單先拿來用，名字可以馬上輸入；記得名字的人，名單和個人資料一次請求拿回來
-  (function init() {
+  // 先用手機上記住的資料秒開畫面，同時向伺服器拿最新的全部資料；
+  // 拿到後若內容有變、而且團員還沒開始填表，就換成最新的畫面
+  let fresh = false;
+  const bootReady = (function init() {
     let saved = null, cachedBoot = null;
     try {
       saved = localStorage.getItem('member');
       cachedBoot = JSON.parse(localStorage.getItem('boot') || 'null');
     } catch (e) {}
-    if (cachedBoot) applyBoot(cachedBoot);
+    if (cachedBoot && cachedBoot.infos) applyBoot(cachedBoot);
     else { input.disabled = true; input.placeholder = '名單載入中…'; }
-    if (saved) { input.value = saved; show('loading'); }
 
-    api('boot', saved ? { name: saved } : {})
+    const cachedInfo = saved && cachedBoot && cachedBoot.infos && cachedBoot.infos[saved];
+    if (saved) {
+      input.value = saved;
+      if (cachedInfo) render(cachedInfo); else show('loading');
+    }
+
+    return api('boot', {})
       .then(boot => {
-        const info = boot.info;
-        delete boot.info;
         applyBoot(boot);
-        try { localStorage.setItem('boot', JSON.stringify(boot)); } catch (e) {}
+        fresh = true;
         if (!saved) return;
-        if (info && info.found) render(info);
-        else { input.value = ''; show('pick'); }
+        const info = boot.infos[saved];
+        remember(saved, info);
+        if (!info || !info.found) { input.value = ''; show('pick'); return; }
+        const shownSame = current && JSON.stringify(current) === JSON.stringify(info);
+        if (!shownSame && !formDirty) render(info);
       })
       .catch(err => {
-        show('pick');
+        if (!cachedInfo) show('pick');
         if (!cachedBoot) input.placeholder = '';
         $('pickErr').textContent = '載入失敗：' + (err.message || err) + ' 請重新整理頁面。';
+        throw err;
       });
   })();
+  bootReady.catch(() => {});
 </script>
 </body>
 </html>
