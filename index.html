@@ -193,11 +193,14 @@
     html += '<div class="card"><h2>' + esc(info.period) + '</h2>';
     if (info.deadline) {
       html += '<div class="hint" style="margin-bottom:8px">繳費截止日：' + esc(info.deadline) +
-        (info.overdue && ['none', 'issue'].includes(info.status.code) ? '　<b style="color:var(--bad)">已超過截止日，請盡快繳納</b>' : '') + '</div>';
+        (info.overdue && info.total > 0 && ['none', 'issue'].includes(info.status.code) ? '　<b style="color:var(--bad)">已超過截止日，請盡快繳納</b>' : '') + '</div>';
     }
     if (info.items.length) {
-      html += '<table>' + info.items.map(i => '<tr><td>' + esc(i.item) + '</td><td class="amt">' + money(i.amount) + '</td></tr>').join('') +
-        '<tr class="total"><td>合計</td><td class="amt">' + money(info.total) + ' 元</td></tr></table>';
+      html += '<table>' + info.items.map(i => '<tr><td>' + esc(i.item) + '</td><td class="amt">' +
+          (i.paid ? '<span style="color:var(--ok)">✅ 已繳交</span>' : money(i.amount)) + '</td></tr>').join('') +
+        (info.total > 0
+          ? '<tr class="total"><td>合計</td><td class="amt">' + money(info.total) + ' 元</td></tr>'
+          : '<tr class="total"><td colspan="2" style="color:var(--ok)">本期項目都已繳清 ✅</td></tr>') + '</table>';
     } else {
       html += '<div class="hint">這一期你沒有需要繳的費用。</div>';
     }
