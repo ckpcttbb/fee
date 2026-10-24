@@ -45,6 +45,7 @@
   .b-warn { background: #fdf0dc; color: var(--warn); }
   .b-bad { background: #fce8e6; color: var(--bad); }
   .note { white-space: pre-wrap; }
+  .paid { color: var(--ok); font-weight: 600; }
   .err { color: var(--bad); font-size: 14px; margin-top: 8px; }
   .hidden { display: none !important; }
   .preview { max-width: 100%; max-height: 200px; margin-top: 8px; border-radius: 8px; }
@@ -196,11 +197,17 @@
         (info.overdue && info.total > 0 && ['none', 'issue'].includes(info.status.code) ? '　<b style="color:var(--bad)">已超過截止日，請盡快繳納</b>' : '') + '</div>';
     }
     if (info.items.length) {
+      // 之前已繳交的項目，以及財務確認入帳後的所有項目，都標綠色勾勾
+      const confirmed = info.status.code === 'done';
+      const paidCell = (amount, date) => '<span class="paid">✅ ' + (date ? esc(date) + ' ' : '') + '已繳交' +
+        (amount ? ' ' + money(amount) : '') + '</span>';
       html += '<table>' + info.items.map(i => '<tr><td>' + esc(i.item) + '</td><td class="amt">' +
-          (i.paid ? '<span style="color:var(--ok)">✅ 已繳交</span>' : money(i.amount)) + '</td></tr>').join('') +
+          (i.paid ? paidCell(i.amount, i.date) : confirmed ? paidCell(i.amount, '') : money(i.amount)) +
+          '</td></tr>').join('') +
         (info.total > 0
-          ? '<tr class="total"><td>合計</td><td class="amt">' + money(info.total) + ' 元</td></tr>'
-          : '<tr class="total"><td colspan="2" style="color:var(--ok)">本期項目都已繳清 ✅</td></tr>') + '</table>';
+          ? '<tr class="total"><td>' + (confirmed ? '本期應繳' : '合計') + '</td><td class="amt">' +
+            (confirmed ? '<span class="paid">✅ ' + money(info.total) + ' 元</span>' : money(info.total) + ' 元') + '</td></tr>'
+          : '<tr class="total"><td colspan="2" class="paid">本期項目都已繳清 ✅</td></tr>') + '</table>';
     } else {
       html += '<div class="hint">這一期你沒有需要繳的費用。</div>';
     }
