@@ -201,7 +201,8 @@
       const confirmed = info.status.code === 'done';
       const paidCell = (amount, date) => '<span class="paid">✅ ' + (date ? esc(date) + ' ' : '') + '已繳交' +
         (amount ? ' ' + money(amount) : '') + '</span>';
-      html += '<table>' + info.items.map(i => '<tr><td>' + esc(i.item) + '</td><td class="amt">' +
+      html += '<table>' + info.items.map(i => '<tr><td>' + esc(i.item) +
+          (i.note ? '<div class="hint">' + esc(i.note) + '</div>' : '') + '</td><td class="amt">' +
           (i.paid ? paidCell(i.amount, i.date) : confirmed ? paidCell(i.amount, '') : money(i.amount)) +
           '</td></tr>').join('') +
         (info.total > 0
