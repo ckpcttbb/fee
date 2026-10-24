@@ -202,15 +202,14 @@
     if (info.preparing) {
       html += '<div class="card"><h2>' + esc(info.period) + '</h2>' +
         '<div class="banner b-info">本期收費準備中，聲部長確認名單和金額後就會開放。請等群組通知後再回來繳費。</div></div>';
+      if (info.previous) html += latestCard(info.previous);
       v.innerHTML = html;
       show('view');
       return;
     }
 
     if (!info.open) {
-      html += '<div class="card"><h2>目前沒有收款項目</h2>';
-      html += '<div class="hint">上一期「' + esc(info.period) + '」的狀態：</div><div style="margin-top:10px">' +
-        (statusBanner(info) || '<div class="banner b-warn">沒有你的繳款紀錄，如有疑問請聯絡聲部長。</div>') + '</div></div>';
+      html += '<div class="card"><h2>目前沒有收款項目</h2></div>' + latestCard(info);
       v.innerHTML = html;
       show('view');
       return;
@@ -264,6 +263,12 @@
       setupForm();
       drawQr(info.twqr);
     }
+  }
+
+  // 最近一期的繳費狀態（收款關閉、或新一期還在準備中時顯示）
+  function latestCard(info) {
+    return '<div class="card"><div class="hint">最近一期「' + esc(info.period) + '」的狀態：</div><div style="margin-top:10px">' +
+      (statusBanner(info) || '<div class="banner b-warn">沒有你的繳款紀錄，如有疑問請聯絡聲部長。</div>') + '</div></div>';
   }
 
   function payCard(info, open) {
