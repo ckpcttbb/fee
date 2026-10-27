@@ -48,7 +48,8 @@
   .paid { color: var(--ok); font-weight: 600; }
   .err { color: var(--bad); font-size: 14px; margin-top: 8px; }
   .hidden { display: none !important; }
-  .preview { max-width: 100%; max-height: 200px; margin-top: 8px; border-radius: 8px; }
+  .previews { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preview { max-width: calc(33% - 6px); max-height: 160px; margin-top: 8px; border-radius: 8px; object-fit: cover; }
 </style>
 </head>
 <body>
@@ -89,8 +90,9 @@
   const money = (n) => Number(n).toLocaleString('zh-TW');
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current = null;
-  let shotData = null;
-  let shotUpload = null; // 背景上傳截圖的 Promise，完成後得到雲端硬碟連結
+  const MAX_SHOTS = 3;
+  // 每張截圖：{ data, upload }；upload 是背景上傳的 Promise，完成後得到雲端硬碟連結
+  let shots = [];
   let formDirty = false; // 團員已經開始填表，背景更新就不要重畫畫面
 
   // ===== 選名字 =====
@@ -187,8 +189,7 @@
   function render(info) {
     current = info;
     formDirty = false;
-    shotUpload = null;
-    shotData = null;
+    shots = [];
     const v = $('view');
     if (!info.found) {
       show('pick');
@@ -292,8 +293,9 @@
       '<label for="last5">你的匯款帳號後五碼</label><input id="last5" inputmode="numeric" maxlength="5" placeholder="例如 12345" required>' +
       '<div class="hint">請看存摺封面或銀行 APP 的帳戶總覽；轉帳成功畫面通常只顯示部分號碼。</div>' +
       '<label for="amount">轉帳金額</label><input id="amount" inputmode="numeric" value="' + info.total + '" required>' +
-      '<label for="shot">轉帳截圖（選填）</label><input id="shot" type="file" accept="image/*">' +
-      '<img id="preview" class="preview hidden" alt="">' +
+      '<label for="shot">轉帳截圖（選填，最多 ' + MAX_SHOTS + ' 張）</label><input id="shot" type="file" accept="image/*" multiple>' +
+      '<div class="hint">分次轉帳的話，金額請填合計，並附上每一筆的截圖（可以一次選多張）。</div>' +
+      '<div id="previews" class="previews"></div>' +
       '<div id="shotStatus" class="hint"></div>' +
       '<label for="note">備註（選填）</label><textarea id="note" maxlength="500"></textarea>' +
       '<button class="primary" id="submitBtn" type="submit">送出回報</button>' +
@@ -341,27 +343,60 @@
     $('reportForm').addEventListener('input', () => { formDirty = true; });
   }
 
-  // 選好截圖就在背景上傳，團員填其他欄位時就傳完了，按送出時不必再等
+  // 選好截圖就在背景上傳，團員填其他欄位時就傳完了，按送出時不必再等。
+  // 重新選擇會換掉之前選的全部截圖
   function onPickShot(e) {
-    shotData = null;
-    shotUpload = null;
-    const file = e.target.files[0];
-    const img = $('preview');
+    const picked = [...e.target.files];
+    const box = $('previews');
     const status = $('shotStatus');
-    img.classList.add('hidden');
+    const batch = shots = [];
+    box.innerHTML = '';
     status.textContent = '';
-    if (!file) return;
-    compress(file).then(data => {
-      shotData = data;
-      img.src = 'data:' + data.mimeType + ';base64,' + data.data;
-      img.classList.remove('hidden');
-      status.textContent = '截圖上傳中…';
-      const upload = api('upload', { name: current.name, file: data }).then(r => r.url);
-      shotUpload = upload;
-      upload.then(
-        () => { if (shotUpload === upload) status.textContent = '✅ 截圖已上傳'; },
-        () => { if (shotUpload === upload) status.textContent = '截圖會在送出時一起上傳'; });
-    }).catch(() => { $('formErr').textContent = '這張圖片無法讀取，請換一張或改用截圖。'; e.target.value = ''; });
+    $('formErr').textContent = '';
+    if (!picked.length) return;
+    if (picked.length > MAX_SHOTS) $('formErr').textContent = '截圖最多 ' + MAX_SHOTS + ' 張，只會上傳前 ' + MAX_SHOTS + ' 張。';
+    const showStatus = () => {
+      if (shots !== batch) return;
+      const done = batch.filter(s => s.url).length;
+      const failed = batch.filter(s => s.failed).length;
+      status.textContent = done === batch.length ? '✅ 截圖已上傳' + (batch.length > 1 ? '（' + done + ' 張）' : '')
+        : failed ? '有 ' + failed + ' 張截圖會在送出時重新上傳'
+        : '截圖上傳中…（' + done + '/' + batch.length + '）';
+    };
+    picked.slice(0, MAX_SHOTS).forEach(file => {
+      const shot = { data: null, url: '', failed: false, upload: null };
+      batch.push(shot);
+      shot.upload = compress(file).then(data => {
+        shot.data = data;
+        const img = document.createElement('img');
+        img.className = 'preview';
+        img.alt = '';
+        img.src = 'data:' + data.mimeType + ';base64,' + data.data;
+        box.appendChild(img);
+        showStatus();
+        return api('upload', { name: current.name, file: data }).then(r => {
+          shot.url = r.url;
+          showStatus();
+          return r.url;
+        }, err => { shot.failed = true; showStatus(); throw err; });
+      }, err => {
+        // 讀不到的圖片直接略過，不擋其他張
+        batch.splice(batch.indexOf(shot), 1);
+        $('formErr').textContent = '有一張圖片無法讀取，請換一張或改用截圖。';
+        showStatus();
+        throw err;
+      });
+      shot.upload.catch(() => {});
+    });
+    showStatus();
+  }
+
+  // 送出前把每張截圖都拿到連結：背景上傳失敗的再傳一次
+  function uploadAllShots() {
+    return Promise.all(shots.map(shot => shot.upload.then(url => url, () => {
+      if (!shot.data) return '';
+      return api('upload', { name: current.name, file: shot.data }).then(r => r.url);
+    }))).then(urls => urls.filter(Boolean));
   }
 
   // 短邊最多 1080px（手機截圖原本的寬度，文字清楚）、長邊最多 2400px，轉成 JPEG；
@@ -410,7 +445,7 @@
 
     const btn = $('submitBtn');
     btn.disabled = true;
-    btn.textContent = shotUpload ? '截圖上傳中…' : '送出中…';
+    btn.textContent = shots.length ? '截圖上傳中…' : '送出中…';
     const form = {
       name: current.name,
       paidAt: $('paidAt').value,
@@ -418,11 +453,9 @@
       amount: Number(amount),
       note: $('note').value,
     };
-    // 截圖已在背景傳好就只送連結；背景上傳失敗的話，改成和資料一起送
-    const withShot = shotUpload
-      ? shotUpload.then(url => Object.assign(form, { shotUrl: url }), () => Object.assign(form, { file: shotData }))
-      : Promise.resolve(Object.assign(form, shotData ? { file: shotData } : {}));
-    withShot
+    // 截圖都先上傳好，送出時只送連結
+    uploadAllShots()
+      .then(urls => Object.assign(form, { shotUrls: urls }))
       .then(data => { btn.textContent = '送出中…'; return api('submit', data); })
       .then(info => {
         BOOT.infos[info.name] = info;
